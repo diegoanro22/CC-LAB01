@@ -3,6 +3,7 @@ package com.lexsynanalyzer.analyzer;
 import org.antlr.v4.runtime.BaseErrorListener;
 import org.antlr.v4.runtime.RecognitionException;
 import org.antlr.v4.runtime.Recognizer;
+import org.antlr.v4.runtime.Token;
 
 import java.util.List;
 import java.util.function.BiFunction;
@@ -26,12 +27,15 @@ public final class CapturingErrorListener extends BaseErrorListener {
     @Override
     public void syntaxError(Recognizer<?, ?> recognizer, Object offendingSymbol, int line,
                              int charPositionInLine, String msg, RecognitionException e) {
-        String simbolo = offendingSymbol != null ? offendingSymbol.toString() : extraerSimbolo(msg);
+        String simbolo = extraerSimbolo(offendingSymbol, msg);
         String descripcion = traductor.apply(simbolo, msg);
         errores.add(new AnalysisError(tipo, line, charPositionInLine + 1, simbolo, descripcion));
     }
 
-    private static String extraerSimbolo(String msg) {
+    private static String extraerSimbolo(Object offendingSymbol, String msg) {
+        if (offendingSymbol instanceof Token token) {
+            return token.getText();
+        }
         if (msg == null) {
             return "";
         }

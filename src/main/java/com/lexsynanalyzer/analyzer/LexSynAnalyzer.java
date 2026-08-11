@@ -19,8 +19,7 @@ public final class LexSynAnalyzer {
 
         LexSynAnalyzerLexer lexer = new LexSynAnalyzerLexer(input);
         lexer.removeErrorListeners();
-        // TODO(A - pipeline léxico): addErrorListener(...) con el listener que traduce
-        // errores léxicos a español y los agrega a `errores` con TipoError.LEXICO.
+        lexer.addErrorListener(new CapturingErrorListener(TipoError.LEXICO, errores, MensajesEspanol::traducirLexico));
 
         CommonTokenStream tokens = new CommonTokenStream(lexer);
         LexSynAnalyzerParser parser = new LexSynAnalyzerParser(tokens);

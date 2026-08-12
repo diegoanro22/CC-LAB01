@@ -6,8 +6,12 @@ import com.lexsynanalyzer.analyzer.LexSynAnalyzer;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import javax.swing.filechooser.FileNameExtensionFilter;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
 import javax.swing.text.BadLocationException;
 import java.awt.*;
+import java.awt.event.InputEvent;
+import java.awt.event.KeyEvent;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -27,21 +31,25 @@ public class LexSynAnalyzerGui extends JFrame {
     private static final Color COLOR_ACCENT = new Color(0x1B, 0x6E, 0xC2);
     private static final Color COLOR_ACCENT_HOVER = new Color(0x15, 0x58, 0x9C);
     private static final Color COLOR_ACCENT_BORDER = new Color(0x0F, 0x46, 0x80);
+    private static final Color COLOR_DISABLED_BUTTON = new Color(0x4A, 0x4A, 0x4A);
     private static final Color COLOR_LINE_NUMBERS = new Color(0x85, 0x85, 0x85);
 
     private final JTextArea editorArea;
     private final JTextArea lineNumbersArea;
     private final ResultsTablePanel resultsPanel;
     private final JButton btnAbrir;
+    private final JButton btnGuardar;
     private final JButton btnAnalizar;
     private final JButton btnLimpiar;
     private final JLabel lblArchivoPath;
     private final JLabel lblStatusBar;
 
     private File archivoActual;
+    private boolean hasUnsavedChanges;
 
     public LexSynAnalyzerGui() {
         super("Compiscript — Analizador Léxico y Sintáctico (ANTLR4)");
+        UIManager.put("Button.disabledText", Color.WHITE);
 
         lblArchivoPath = new JLabel("[ Ningún archivo cargado ]");
         lblArchivoPath.setFont(new Font("Segoe UI", Font.ITALIC, 12));
@@ -102,6 +110,22 @@ public class LexSynAnalyzerGui extends JFrame {
 
         // Actualizar números de línea al escribir o cargar texto
         editorArea.addCaretListener(e -> actualizarNumerosDeLinea());
+        editorArea.getDocument().addDocumentListener(new DocumentListener() {
+            @Override
+            public void insertUpdate(DocumentEvent event) {
+                marcarCambiosSinGuardar();
+            }
+
+            @Override
+            public void removeUpdate(DocumentEvent event) {
+                marcarCambiosSinGuardar();
+            }
+
+            @Override
+            public void changedUpdate(DocumentEvent event) {
+                marcarCambiosSinGuardar();
+            }
+        });
 
         // 3. Panel de Resultados
         resultsPanel = new ResultsTablePanel();
@@ -137,14 +161,26 @@ public class LexSynAnalyzerGui extends JFrame {
 
         // Asignar Eventos a Botones
         btnAbrir = encontrarBoton("Abrir");
+        btnGuardar = encontrarBoton("Guardar");
         btnAnalizar = encontrarBoton("Analizar");
         btnLimpiar = encontrarBoton("Limpiar");
 
         actualizarEstadoBotonAnalizar(false);
+        btnGuardar.setEnabled(false);
 
         btnAbrir.addActionListener(e -> abrirArchivo());
+        btnGuardar.addActionListener(e -> guardarArchivo());
         btnAnalizar.addActionListener(e -> ejecutarAnalisis());
         btnLimpiar.addActionListener(e -> limpiarVista());
+
+        getRootPane().getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW)
+                .put(KeyStroke.getKeyStroke(KeyEvent.VK_S, InputEvent.CTRL_DOWN_MASK), "saveFile");
+        getRootPane().getActionMap().put("saveFile", new AbstractAction() {
+            @Override
+            public void actionPerformed(java.awt.event.ActionEvent event) {
+                guardarArchivo();
+            }
+        });
 
         actualizarNumerosDeLinea();
     }
@@ -165,17 +201,21 @@ public class LexSynAnalyzerGui extends JFrame {
 
         JButton btnOpen = crearBoton("Abrir Archivo (.cps)", COLOR_ACCENT, COLOR_ACCENT_HOVER,
                 "Abrir un archivo de código fuente Compiscript (.cps)");
+        JButton btnSave = crearBoton("Guardar", COLOR_ACCENT, COLOR_ACCENT_HOVER,
+                "Guardar los cambios en el archivo actual (Ctrl+S)");
         JButton btnRun = crearBoton("Analizar", COLOR_ACCENT, COLOR_ACCENT_HOVER,
                 "Ejecutar el análisis léxico y sintáctico sobre el archivo cargado");
         JButton btnClear = crearBoton("Limpiar", COLOR_ACCENT, COLOR_ACCENT_HOVER,
                 "Limpiar el editor de código y los resultados");
 
         btnOpen.setName("Abrir");
+        btnSave.setName("Guardar");
         btnRun.setName("Analizar");
         btnClear.setName("Limpiar");
 
         toolbar.add(lblArchivoPath);
         toolbar.add(btnOpen);
+        toolbar.add(btnSave);
         toolbar.add(btnRun);
         toolbar.add(btnClear);
 
@@ -212,8 +252,8 @@ public class LexSynAnalyzerGui extends JFrame {
     }
 
     private void actualizarEstadoBotonAnalizar(boolean habilitado) {
-        btnAnalizar.setEnabled(true);
-        btnAnalizar.setBackground(COLOR_ACCENT);
+        btnAnalizar.setEnabled(habilitado);
+        btnAnalizar.setBackground(habilitado ? COLOR_ACCENT : COLOR_DISABLED_BUTTON);
         btnAnalizar.setForeground(Color.WHITE);
     }
 
@@ -254,8 +294,10 @@ public class LexSynAnalyzerGui extends JFrame {
                 String contenido = Files.readString(archivoActual.toPath());
                 editorArea.setText(contenido);
                 editorArea.setCaretPosition(0);
+                hasUnsavedChanges = false;
                 actualizarNumerosDeLinea();
                 actualizarEstadoBotonAnalizar(true);
+                btnGuardar.setEnabled(true);
                 lblArchivoPath.setText(archivoActual.getName());
                 lblStatusBar.setText(" Archivo cargado: " + archivoActual.getAbsolutePath());
                 resultsPanel.limpiar();
@@ -270,6 +312,10 @@ public class LexSynAnalyzerGui extends JFrame {
         if (archivoActual == null || !archivoActual.exists()) {
             JOptionPane.showMessageDialog(this, "Por favor seleccione un archivo válido antes de analizar.",
                     "Archivo no seleccionado", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        if (!guardarArchivo()) {
             return;
         }
 
@@ -309,12 +355,41 @@ public class LexSynAnalyzerGui extends JFrame {
         worker.execute();
     }
 
+    private boolean guardarArchivo() {
+        if (archivoActual == null) {
+            JOptionPane.showMessageDialog(this, "Abra un archivo .cps antes de guardar.",
+                    "Archivo no seleccionado", JOptionPane.WARNING_MESSAGE);
+            return false;
+        }
+
+        try {
+            Files.writeString(archivoActual.toPath(), editorArea.getText());
+            hasUnsavedChanges = false;
+            lblStatusBar.setText(" [OK] Cambios guardados: " + archivoActual.getAbsolutePath());
+            return true;
+        } catch (IOException ex) {
+            JOptionPane.showMessageDialog(this, "No fue posible guardar el archivo:\n" + ex.getMessage(),
+                    "Error al guardar", JOptionPane.ERROR_MESSAGE);
+            lblStatusBar.setText(" [ERROR] No se pudieron guardar los cambios.");
+            return false;
+        }
+    }
+
+    private void marcarCambiosSinGuardar() {
+        if (archivoActual != null && !hasUnsavedChanges) {
+            hasUnsavedChanges = true;
+            lblStatusBar.setText(" [EDITADO] Hay cambios sin guardar. Presione Ctrl+S o Guardar.");
+        }
+    }
+
     private void limpiarVista() {
         archivoActual = null;
+        hasUnsavedChanges = false;
         editorArea.setText(PLACEHOLDER_TEXT);
         actualizarNumerosDeLinea();
         resultsPanel.limpiar();
         actualizarEstadoBotonAnalizar(false);
+        btnGuardar.setEnabled(false);
         lblArchivoPath.setText("[ Ningún archivo cargado ]");
         lblStatusBar.setText(" Vista limpiada. Seleccione un archivo .cps.");
     }

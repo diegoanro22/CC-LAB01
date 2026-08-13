@@ -1,3 +1,6 @@
+# Video mostrando el funcionamiento del analizador : https://canva.link/wpopgcpjddslcuu
+
+
 # Analizador Léxico y Sintáctico para Compiscript (ANTLR4 + Java Swing)
 
 **Curso:** Construcción de Compiladores  
